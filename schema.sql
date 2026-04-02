@@ -1,170 +1,116 @@
-# ============================================================
-#  Football Club Management System — Database Layer (db.py)
-# ============================================================
+DROP DATABASE IF EXISTS football_db;
+CREATE DATABASE football_db;
+USE football_db;
 
-import mysql.connector
-from mysql.connector import Error
+-- ============================================================
+--  TABLE: clubs
+-- ============================================================
+CREATE TABLE clubs (
+    club_id           INT AUTO_INCREMENT PRIMARY KEY,
+    club_name         VARCHAR(100) NOT NULL,
+    city              VARCHAR(100),
+    league_titles     INT          DEFAULT 0,
+    stadium_capacity  INT          DEFAULT 0,
+    head_coach        VARCHAR(100)
+);
 
-# ------------------------------------------------------------
-#  Connection
-# ------------------------------------------------------------
+-- ============================================================
+--  TABLE: players
+--  club_id must be NULL-able for ON DELETE SET NULL to work
+-- ============================================================
+CREATE TABLE players (
+    player_id    INT AUTO_INCREMENT PRIMARY KEY,
+    player_name  VARCHAR(100) NOT NULL,
+    position     VARCHAR(50),
+    age          INT,
+    nationality  VARCHAR(100),
+    club_id      INT DEFAULT NULL,
+    FOREIGN KEY (club_id)
+        REFERENCES clubs(club_id)
+        ON DELETE SET NULL
+        ON UPDATE CASCADE
+);
 
-def get_connection():
-    """Return a fresh DB connection. Raises Error on failure."""
-    return mysql.connector.connect(
-        host="localhost",
-        user="root",
-        password="MySQL@DB1",
-        database="football_db"
-    )
+-- ============================================================
+--  TABLE: league_table
+--  Column names match db.py: draws, losses (not draw/loss)
+-- ============================================================
+CREATE TABLE league_table (
+    entry_id         INT AUTO_INCREMENT PRIMARY KEY,
+    team_name        VARCHAR(100) NOT NULL,
+    matches_played   INT DEFAULT 0,
+    wins             INT DEFAULT 0,
+    draws            INT DEFAULT 0,
+    losses           INT DEFAULT 0,
+    goals_for        INT DEFAULT 0,
+    goals_against    INT DEFAULT 0,
+    goal_difference  INT DEFAULT 0,
+    points           INT DEFAULT 0
+);
 
-# Use a single persistent connection for the session.
-# Wrapped so import failures are descriptive.
-try:
-    db = get_connection()
-    cursor = db.cursor()
-except Error as e:
-    raise RuntimeError(f"Could not connect to MySQL: {e}")
+-- ============================================================
+--  TABLE: transfer_market
+--  listing_id as PK — allows a player to be re-listed
+--  club_id NULL-able for ON DELETE SET NULL
+-- ============================================================
+CREATE TABLE transfer_market (
+    listing_id      INT AUTO_INCREMENT PRIMARY KEY,
+    player_id       INT,
+    club_id         INT DEFAULT NULL,
+    player_name     VARCHAR(100) NOT NULL,
+    age             INT,
+    speciality      VARCHAR(200),
+    transfer_value  BIGINT DEFAULT 0,
+    FOREIGN KEY (club_id)
+        REFERENCES clubs(club_id)
+        ON DELETE SET NULL
+        ON UPDATE CASCADE
+);
 
+-- ============================================================
+--  SEED DATA — Clubs
+-- ============================================================
+INSERT INTO clubs (club_name, city, league_titles, stadium_capacity, head_coach) VALUES
+('Mohun Bagan SG',  'Kolkata',   5, 60000, 'Jose Molina'),
+('East Bengal FC',  'Kolkata',   8, 60000, 'Carles Cuadrat'),
+('Mumbai City FC',  'Mumbai',    2,  8000, 'Petr Kratky'),
+('Bengaluru FC',    'Bengaluru', 3, 12000, 'Gerard Nus'),
+('Kerala Blasters', 'Kochi',     0, 50000, 'Mikael Stahre'),
+('Hyderabad FC',    'Hyderabad', 1, 15000, 'Thangboi Singto');
 
-def _ensure_connection():
-    """Reconnect if the connection was dropped."""
-    global db, cursor
-    if not db.is_connected():
-        db = get_connection()
-        cursor = db.cursor()
+-- ============================================================
+--  SEED DATA — Players
+-- ============================================================
+INSERT INTO players (player_name, position, age, nationality, club_id) VALUES
+('Sunil Chhetri',         'Forward',    39, 'Indian', 4),
+('Roy Krishna',           'Striker',    36, 'Fijian',  1),
+('Brandon Fernandes',     'Midfielder', 30, 'Indian', 1),
+('Lallianzuala Chhangte', 'Winger',     27, 'Indian', 3),
+('Gurpreet Singh',        'Goalkeeper', 32, 'Indian', 4),
+('Sandesh Jhingan',       'Defender',   31, 'Indian', 5),
+('Bipin Singh',           'Winger',     29, 'Indian', 3),
+('Anirudh Thapa',         'Midfielder', 27, 'Indian', 4),
+('Manvir Singh',          'Forward',    27, 'Indian', 1),
+('Rahul Bheke',           'Defender',   33, 'Indian', 1);
 
+-- ============================================================
+--  SEED DATA — League Table
+-- ============================================================
+INSERT INTO league_table
+    (team_name, matches_played, wins, draws, losses, goals_for, goals_against, goal_difference, points)
+VALUES
+('Mohun Bagan SG',  20, 13, 4,  3, 38, 18,  20, 43),
+('Mumbai City FC',  20, 12, 3,  5, 35, 22,  13, 39),
+('Bengaluru FC',    20, 10, 5,  5, 30, 24,   6, 35),
+('Kerala Blasters', 20,  9, 4,  7, 28, 27,   1, 31),
+('East Bengal FC',  20,  7, 5,  8, 25, 30,  -5, 26),
+('Hyderabad FC',    20,  4, 3, 13, 18, 40, -22, 15);
 
-# ============================================================
-#  CLUBS
-# ============================================================
-
-def get_clubs():
-    """Return (club_id, club_name) for all clubs."""
-    _ensure_connection()
-    cursor.execute("SELECT club_id, club_name FROM clubs ORDER BY club_name")
-    return cursor.fetchall()
-
-
-def get_clubs_full():
-    """Return full club details for display."""
-    _ensure_connection()
-    cursor.execute("""
-        SELECT club_name, city, league_titles,
-               stadium_capacity, head_coach
-        FROM clubs
-        ORDER BY club_name
-    """)
-    return cursor.fetchall()
-
-
-def add_club(club_name, city, league_titles, stadium_capacity, head_coach):
-    _ensure_connection()
-    query = """
-        INSERT INTO clubs (club_name, city, league_titles, stadium_capacity, head_coach)
-        VALUES (%s, %s, %s, %s, %s)
-    """
-    cursor.execute(query, (club_name, city, league_titles, stadium_capacity, head_coach))
-    db.commit()
-
-
-# ============================================================
-#  PLAYERS
-# ============================================================
-
-def get_players():
-    """Return all players with their club name."""
-    _ensure_connection()
-    query = """
-        SELECT  p.player_name,
-                p.position,
-                p.age,
-                p.nationality,
-                c.club_name
-        FROM players p
-        JOIN clubs c ON p.club_id = c.club_id
-        ORDER BY p.player_name
-    """
-    cursor.execute(query)
-    return cursor.fetchall()
-
-
-def add_player(name, position, age, nationality, club_id):
-    """
-    Insert a new player.
-    Uses %s placeholders — mysql.connector's universal parameterised form.
-    This prevents SQL injection.
-    """
-    _ensure_connection()
-    query = """
-        INSERT INTO players (player_name, position, age, nationality, club_id)
-        VALUES (%s, %s, %s, %s, %s)
-    """
-    cursor.execute(query, (name, position, age, nationality, club_id))
-    db.commit()
-
-
-def delete_player(player_id):
-    _ensure_connection()
-    cursor.execute("DELETE FROM players WHERE player_id = %s", (player_id,))
-    db.commit()
-
-
-def search_players(keyword):
-    """Search players by name (case-insensitive partial match)."""
-    _ensure_connection()
-    query = """
-        SELECT  p.player_name,
-                p.position,
-                p.age,
-                p.nationality,
-                c.club_name
-        FROM players p
-        JOIN clubs c ON p.club_id = c.club_id
-        WHERE p.player_name LIKE %s
-        ORDER BY p.player_name
-    """
-    cursor.execute(query, (f"%{keyword}%",))
-    return cursor.fetchall()
-
-
-# ============================================================
-#  LEAGUE TABLE
-# ============================================================
-
-def get_league_table():
-    """Return league standings sorted by points (desc), then GD."""
-    _ensure_connection()
-    cursor.execute("""
-        SELECT team_name, matches_played, wins, draws, losses,
-               goals_for, goals_against, goal_difference, points
-        FROM league_table
-        ORDER BY points DESC, goal_difference DESC
-    """)
-    return cursor.fetchall()
-
-
-# ============================================================
-#  TRANSFER MARKET
-# ============================================================
-
-def get_transfer_market():
-    _ensure_connection()
-    cursor.execute("""
-        SELECT player_name, age, speciality,
-               transfer_value, club_id
-        FROM transfer_market
-        ORDER BY transfer_value DESC
-    """)
-    return cursor.fetchall()
-
-
-def add_transfer_listing(player_id, club_id, player_name, age, speciality, transfer_value):
-    _ensure_connection()
-    query = """
-        INSERT INTO transfer_market
-            (player_id, club_id, player_name, age, speciality, transfer_value)
-        VALUES (%s, %s, %s, %s, %s, %s)
-    """
-    cursor.execute(query, (player_id, club_id, player_name, age, speciality, transfer_value))
-    db.commit()
+-- ============================================================
+--  SEED DATA — Transfer Market
+-- ============================================================
+INSERT INTO transfer_market (player_id, club_id, player_name, age, speciality, transfer_value) VALUES
+(4, 3, 'Lallianzuala Chhangte', 27, 'Pace, Dribbling, Crossing',   8000000),
+(6, 5, 'Sandesh Jhingan',       31, 'Aerial Duels, Leadership',    5000000),
+(7, 3, 'Bipin Singh',           29, 'Pace, Left Wing, Set Pieces', 4500000),
+(2, 1, 'Roy Krishna',           36, 'Finishing, Hold-up Play',     3000000);
